@@ -4,6 +4,13 @@
 
 RecoverAI detects at-risk revenue, diagnoses the cause, predicts recovery probability, selects a safe intervention, executes it through Razorpay Test Mode, verifies the outcome, and maintains an auditable trail.
 
+The operating loop is:
+
+```text
+DETECT → DIAGNOSE → PREDICT → POLICY → HUMAN APPROVAL (when required)
+→ EXECUTE → VERIFY → MEASURE → STOP / ESCALATE
+```
+
 ## Problem
 
 Failed payments, abandoned checkouts, and subscription failures represent recoverable revenue. RecoverAI identifies which cases are worth recovering and acts safely instead of blindly retrying.
@@ -51,7 +58,7 @@ AI Service   Policy Engine
         Data Store
 ```
 
-**The LLM never moves money.** The deterministic Policy Engine is the only component authorized to approve financial actions.
+**The LLM never moves money.** Root-cause diagnosis is deterministic in the default build, and optional LLM narration cannot change the action, amount, confidence, or policy result. The deterministic Policy Engine is the control layer for financial actions.
 
 ## AI
 
@@ -102,7 +109,7 @@ Three canonical scenarios are verified end-to-end:
 * **Case B:** ₹35,000 → human approval → **Recovered**
 * **Case C:** 3 failed retries → **Escalated**, 4th retry blocked
 
-**43/43 tests passed.**
+The backend suite contains 49 tests covering policy, state transitions, money, orchestration, idempotency, retry limits, voice intents, RBAC, and signed webhooks. The frontend has lint and production-build checks.
 
 ## Tech Stack
 
@@ -141,10 +148,23 @@ uvicorn app:app --reload --port 8000
 ```bash
 cd backend
 npm install
-cp .env.example .env
+# Optional: configure MONGODB_URI, AI_SERVICE_URL, Razorpay test keys,
+# RAZORPAY_WEBHOOK_SECRET, ADMIN_API_KEY, and REVIEWER_API_KEY.
 node seed.js
 npm start
 ```
+
+For pitch-video preparation, `npm run seed` loads the deterministic `seed=42`
+dataset into MongoDB Atlas only and fails closed if `MONGODB_URI` is missing or
+MongoDB is unreachable. It reports the database mode and seeded collection
+counts. Run `npm run demo:check` afterward to verify MongoDB, seeded cases,
+verification records, approval/escalation workflows, audit data, simulation
+mode, and AI-service reachability.
+
+The seed includes transparent `SEEDED_DEMO` records and deterministic pitch
+scenarios: Case A autonomous recovery, Case B pending human approval, and Case
+C retry exhaustion/escalation. Seeded historical verification is labeled as
+synthetic demo data and is not presented as a live provider recovery.
 
 ### Frontend
 
@@ -159,7 +179,36 @@ npm run dev
 ```bash
 cd backend
 npm test
+
+cd ../frontend
+npm run lint
+npm run build
+
+cd ../ai-service
+python -m unittest test_reproducibility.py
 ```
+
+When no MongoDB or Razorpay credentials are configured, the app explicitly runs
+in local JSON-store and deterministic Razorpay simulation modes. These are demo
+modes, not production payment processing.
+
+## Human approval and verification
+
+High-value or low-confidence cases enter `AWAITING_APPROVAL`. The approval and
+rejection endpoints require reviewer-level access when RBAC keys are configured;
+the UI never auto-approves a case. A case is counted as recovered only after a
+successful retry verification or a signature-verified `payment_link.paid`
+webhook whose amount exactly matches the case amount.
+
+## Security and operating limits
+
+* Sensitive execution and reviewer actions are rate-limited and RBAC-protected when keys are configured.
+* Resumed cases are bound to their original transaction, customer, and amount.
+* Idempotency keys bind case, action, and attempt number.
+* Production concurrent-execution safety relies on MongoDB's unique idempotency index; the local JSON store is single-process demo/test persistence and does not provide atomic cross-request uniqueness.
+* Stopped cases cannot execute another financial action.
+* Webhooks require `RAZORPAY_WEBHOOK_SECRET`, HMAC verification, an event ID, and duplicate-event protection.
+* The local JSON store is for demo/testing; production should use MongoDB.
 
 ## Limitations
 
@@ -167,8 +216,8 @@ npm test
 * MongoDB and Razorpay depend on external network access
 * Authorization is API-key based rather than full RBAC
 * Rate limiting is in-memory
-* No webhook signature verification
 * Deployment configurations are not included
 * ML performance is limited by the synthetic dataset
+* Webhook handling currently covers signed `payment_link.paid` events; other Razorpay event types are acknowledged but do not change recovery state.
 
 **RecoverAI is designed to recover revenue while keeping every financial action controlled, explainable, verifiable, and auditable.**
