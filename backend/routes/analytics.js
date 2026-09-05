@@ -12,8 +12,8 @@ router.get("/recovery", async (req, res) => {
   });
 });
 
-router.get("/baseline", (req, res) => {
-  res.json(analytics.getBaselineComparison());
+router.get("/baseline", async (req, res) => {
+  res.json(await analytics.getBaselineComparison());
 });
 
 // GET /api/analytics/evaluation-runs - all persisted evaluation runs
