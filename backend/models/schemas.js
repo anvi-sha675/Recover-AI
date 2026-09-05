@@ -1,3 +1,5 @@
+import { toPaise } from "../services/money.js";
+
 export function makeCustomer({ customer_id, name, email, phone }) {
   return {
     customer_id,
@@ -22,6 +24,7 @@ export function makeTransaction({
     transaction_id,
     customer_id,
     amount,
+    amount_paise: toPaise(amount),
     status, // 'success' | 'failed'
     payment_method,
     failure_reason,
@@ -41,6 +44,7 @@ export function makeRecoveryCase({
     transaction_id,
     customer_id,
     amount,
+    amount_paise: toPaise(amount),
     risk_score,
     recovery_probability,
     root_cause,
