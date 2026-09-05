@@ -17,6 +17,7 @@ export default function RiskInbox() {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const f = FILTERS.find((x) => x.key === filter);
@@ -26,10 +27,12 @@ export default function RiskInbox() {
       ...(search ? { q: search } : {}),
     };
     setLoading(true);
-    api.cases(params).then((c) => {
-      setCases(c);
-      setLoading(false);
-    });
+    setError(null);
+    api
+      .cases(params)
+      .then((c) => setCases(c))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [filter, search]);
 
   return (
@@ -44,6 +47,10 @@ export default function RiskInbox() {
           best recovery opportunity, not simply the highest risk score.
         </p>
       </div>
+
+      {error && (
+        <Card className="border-block/40 p-4 text-sm text-block">{error}</Card>
+      )}
 
       <div className="flex items-center justify-between gap-4">
         <div className="flex gap-2">
@@ -69,79 +76,81 @@ export default function RiskInbox() {
         />
       </div>
 
-      <Card>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-text-tertiary">
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Amount</th>
-              <th className="px-4 py-3 font-medium">Expected Net Recovery</th>
-              <th className="px-4 py-3 font-medium">Risk Score</th>
-              <th className="px-4 py-3 font-medium">Recovery Prob.</th>
-              <th className="px-4 py-3 font-medium">Root Cause</th>
-              <th className="px-4 py-3 font-medium">Recommended Action</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td
-                  colSpan={8}
-                  className="px-4 py-8 text-center text-text-tertiary"
-                >
-                  Loading cases…
-                </td>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-text-tertiary">
+                <th className="px-4 py-3 font-medium">Customer</th>
+                <th className="px-4 py-3 font-medium">Amount</th>
+                <th className="px-4 py-3 font-medium">Expected Net Recovery</th>
+                <th className="px-4 py-3 font-medium">Risk Score</th>
+                <th className="px-4 py-3 font-medium">Recovery Prob.</th>
+                <th className="px-4 py-3 font-medium">Root Cause</th>
+                <th className="px-4 py-3 font-medium">Recommended Action</th>
+                <th className="px-4 py-3 font-medium">Status</th>
               </tr>
-            )}
-            {!loading && cases.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-12 text-center">
-                  <div className="text-text-secondary">
-                    No cases match this filter or search.
-                  </div>
-                  <div className="mt-1 text-xs text-text-tertiary">
-                    New revenue-risk events will appear here automatically.
-                  </div>
-                </td>
-              </tr>
-            )}
-            {cases.map((c) => (
-              <tr
-                key={c.case_id}
-                className="border-b border-line-soft last:border-0 hover:bg-ink-800/50"
-              >
-                <td className="px-4 py-3">
-                  <Link
-                    to={`/cases/${c.case_id}`}
-                    className="font-medium text-ai hover:underline"
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-4 py-8 text-center text-text-tertiary"
                   >
-                    {c.customer_id}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 font-mono">{formatINR(c.amount)}</td>
-                <td className="px-4 py-3 font-mono text-recover">
-                  {c.economics
-                    ? formatINR(c.economics.expected_net_recovery)
-                    : "—"}
-                </td>
-                <td className="px-4 py-3 font-mono">{c.risk_score}</td>
-                <td className="px-4 py-3 font-mono">
-                  {c.recovery_probability}
-                </td>
-                <td className="px-4 py-3 text-text-secondary">
-                  {c.root_cause}
-                </td>
-                <td className="px-4 py-3 text-text-secondary">
-                  {c.recommended_action}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={c.current_status} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    Loading cases…
+                  </td>
+                </tr>
+              )}
+              {!loading && cases.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="text-text-secondary">
+                      No cases match this filter or search.
+                    </div>
+                    <div className="mt-1 text-xs text-text-tertiary">
+                      New revenue-risk events will appear here automatically.
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {cases.map((c) => (
+                <tr
+                  key={c.case_id}
+                  className="border-b border-line-soft last:border-0 hover:bg-ink-800/50"
+                >
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/cases/${c.case_id}`}
+                      className="font-medium text-ai hover:underline"
+                    >
+                      {c.customer_id}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 font-mono">{formatINR(c.amount)}</td>
+                  <td className="px-4 py-3 font-mono text-recover">
+                    {c.economics
+                      ? formatINR(c.economics.expected_net_recovery)
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-3 font-mono">{c.risk_score}</td>
+                  <td className="px-4 py-3 font-mono">
+                    {c.recovery_probability}
+                  </td>
+                  <td className="px-4 py-3 text-text-secondary">
+                    {c.root_cause}
+                  </td>
+                  <td className="px-4 py-3 text-text-secondary">
+                    {c.recommended_action}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={c.current_status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </div>
   );

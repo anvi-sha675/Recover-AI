@@ -13,6 +13,7 @@ export default function CaseDetail() {
   const [busy, setBusy] = useState(false);
 
   const load = () => {
+    setError(null);
     api
       .caseDetail(id)
       .then(setData)
@@ -27,15 +28,27 @@ export default function CaseDetail() {
 
   const handleApprove = async () => {
     setBusy(true);
-    await api.approve(id);
-    load();
-    setBusy(false);
+    setError(null);
+    try {
+      await api.approve(id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
   const handleReject = async () => {
     setBusy(true);
-    await api.reject(id);
-    load();
-    setBusy(false);
+    setError(null);
+    try {
+      await api.reject(id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (error) return <Card className="p-6 text-block">Error: {error}</Card>;
@@ -49,6 +62,12 @@ export default function CaseDetail() {
   const verificationAudit = [...audit]
     .reverse()
     .find((e) => e.event === "PAYMENT_VERIFICATION");
+  const actionAudit = [...audit]
+    .reverse()
+    .find((e) => e.event === "RECOVERY_ACTION_EXECUTED");
+  const approvalAudit = [...audit]
+    .reverse()
+    .find((e) => e.event === "APPROVAL_GRANTED");
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,12 +124,51 @@ export default function CaseDetail() {
           <div className="mt-2 text-xs text-text-tertiary">
             Next step:{" "}
             {c.current_status === "ESCALATED"
-              ? "human review in the Approval Queue"
+              ? "human review / follow-up is required"
               : "case closed, no further action"}
             .
           </div>
         </Card>
       )}
+
+      <Card className="border-ai/40 p-5">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-text-tertiary">
+              Recovery decision path
+            </div>
+            <h2 className="mt-1 font-display text-lg font-semibold">
+              From payment failure to verified outcome
+            </h2>
+          </div>
+          <StatusBadge status={c.current_status} />
+        </div>
+        <div className="grid gap-2 md:grid-cols-6">
+          <DecisionStep label="Payment failed" value={c.transaction_id} />
+          <DecisionStep label="Diagnosis" value={c.root_cause} />
+          <DecisionStep
+            label="Prediction"
+            value={c.recovery_probability == null ? "—" : `${c.recovery_probability}`}
+          />
+          <DecisionStep
+            label="Policy"
+            value={c.policy_status}
+            detail={approvalAudit ? "Human approval granted" : undefined}
+          />
+          <DecisionStep
+            label="Action"
+            value={actionAudit ? c.recommended_action : "Not executed"}
+            detail={actionAudit?.reason}
+          />
+          <DecisionStep
+            label="Verification"
+            value={verificationAudit?.result || "Not recorded"}
+            detail={verificationAudit?.reason}
+          />
+        </div>
+      </Card>
+
+      <LifecycleTimeline audit={audit} />
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-5">
@@ -321,4 +379,69 @@ function Row({ k, v, mono }) {
       <dd className={mono ? "font-mono" : ""}>{String(v)}</dd>
     </div>
   );
+}
+
+function DecisionStep({ label, value, detail }) {
+  return (
+    <div className="relative rounded-md border border-line bg-ink-850 p-3">
+      <div className="text-xs uppercase tracking-wide text-text-tertiary">{label}</div>
+      <div className="mt-2 break-words text-sm font-medium">{value || "—"}</div>
+      {detail && <div className="mt-1 text-xs text-text-secondary">{detail}</div>}
+    </div>
+  );
+}
+
+function LifecycleTimeline({ audit }) {
+  const events = audit.filter((event) => lifecycleEvent(event.event));
+  return (
+    <Card className="p-5">
+      <div className="mb-4">
+        <div className="text-xs uppercase tracking-wide text-text-tertiary">Case lifecycle</div>
+        <h2 className="mt-1 font-display text-lg font-semibold">Agent trace</h2>
+      </div>
+      {events.length === 0 ? (
+        <div className="rounded-md border border-line-soft bg-ink-850 p-4 text-sm text-text-tertiary">
+          No lifecycle audit events are available for this case yet.
+        </div>
+      ) : (
+        <ol className="space-y-3">
+          {events.map((event) => (
+            <li key={event.audit_id} className="flex gap-3 border-l border-line pl-4">
+              <div className="min-w-28 font-mono text-xs text-text-tertiary">
+                {new Date(event.timestamp).toLocaleTimeString()}
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{lifecycleEvent(event.event)}</span>
+                  <ActorBadge actor={event.actor} />
+                  <span className={`font-mono text-xs ${resultColor(event.result)}`}>{event.result}</span>
+                </div>
+                <div className="mt-1 text-sm text-text-secondary">{event.reason}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
+function lifecycleEvent(event) {
+  const labels = {
+    PAYMENT_FAILURE_DETECTED: "01 / Payment failed",
+    ROOT_CAUSE_CLASSIFIED: "02 / Failure diagnosed",
+    RECOVERY_PROBABILITY_CALCULATED: "03 / Recovery predicted",
+    POLICY_GATE_PASSED: "04 / Policy allowed",
+    POLICY_BLOCKED: "04 / Policy blocked",
+    AWAITING_HUMAN_APPROVAL: "04 / Human approval required",
+    APPROVAL_GRANTED: "05 / Human decision approved",
+    REJECTED: "05 / Human decision rejected",
+    RECOVERY_ACTION_EXECUTED: "06 / Action executed",
+    PAYMENT_VERIFICATION: "07 / Payment verified",
+    REVENUE_RECOVERED: "07 / Revenue recovered",
+    CASE_CLOSED: "08 / Case closed",
+    CASE_ESCALATED: "08 / Case escalated",
+    CASE_STOPPED: "08 / Case stopped",
+  };
+  return labels[event] || null;
 }
