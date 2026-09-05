@@ -7,7 +7,7 @@ const TERMINAL_STATES = new Set(["RECOVERED", "STOPPED"]);
 const ALLOWED_TRANSITIONS = {
   OPEN: new Set(["OPEN", "AWAITING_APPROVAL", "RECOVERED", "ESCALATED", "STOPPED"]),
   AWAITING_APPROVAL: new Set(["OPEN", "RECOVERED", "ESCALATED", "STOPPED", "AWAITING_APPROVAL"]),
-  ESCALATED: new Set(["ESCALATED", "STOPPED"]), // an escalated case can still be manually stopped, not silently reopened
+  ESCALATED: new Set(["ESCALATED", "STOPPED", "RECOVERED"]), 
   RECOVERED: new Set(["RECOVERED"]), // terminal - no legal transition out
   STOPPED: new Set(["STOPPED"]), // terminal - no legal transition out
 };
