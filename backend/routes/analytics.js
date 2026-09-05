@@ -8,7 +8,7 @@ const router = express.Router();
 router.get("/recovery", async (req, res) => {
   res.json({
     live: await analytics.getLiveDashboardMetrics(),
-    model_evaluation: analytics.getModelMetrics(),
+    model_evaluation: await analytics.getModelMetrics(),
   });
 });
 
