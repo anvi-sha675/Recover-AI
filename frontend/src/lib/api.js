@@ -1,8 +1,13 @@
-const BASE = "/api";
+const configuredBase = import.meta.env.VITE_API_BASE;
+const BASE = configuredBase
+  ? `${configuredBase.replace(/\/$/, "")}/api`
+  : "/api";
 
-let adminApiKey = null;
+let adminApiKey = sessionStorage.getItem("recoverai_api_key") || null;
 export function setAdminApiKey(key) {
   adminApiKey = key || null;
+  if (adminApiKey) sessionStorage.setItem("recoverai_api_key", adminApiKey);
+  else sessionStorage.removeItem("recoverai_api_key");
 }
 export function getAdminApiKey() {
   return adminApiKey;
@@ -11,10 +16,12 @@ export function getAdminApiKey() {
 async function req(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   if (adminApiKey) headers["x-api-key"] = adminApiKey;
+  if (!headers["x-request-id"]) headers["x-request-id"] = `frontend_${crypto.randomUUID()}`;
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || body.detail || `Request failed: ${res.status}`);
+    const message = typeof body.error === "string" ? body.error : body.error?.message;
+    throw new Error(message || body.detail || `Request failed: ${res.status}`);
   }
   return res.json();
 }
