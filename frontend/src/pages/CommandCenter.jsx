@@ -36,20 +36,44 @@ export default function CommandCenter() {
   const [live, setLive] = useState(null);
   const [modelEval, setModelEval] = useState(null);
   const [baseline, setBaseline] = useState(null);
+  const [policy, setPolicy] = useState(null);
+  const [latestEvent, setLatestEvent] = useState(null);
+  const [dataMode, setDataMode] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api
-      .analyticsRecovery()
-      .then((r) => {
-        setLive(r.live);
-        setModelEval(r.model_evaluation);
-      })
-      .catch((e) => setError(e.message));
+    let cancelled = false;
+    const loadLive = () => {
+      Promise.all([api.analyticsRecovery(), api.recentActivity(1)])
+        .then(([analytics, events]) => {
+          if (cancelled) return;
+          setLive(analytics.live);
+          setModelEval(analytics.model_evaluation);
+          setLatestEvent(events[0] || null);
+          setError(null);
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e.message);
+        });
+    };
+    loadLive();
+    const interval = setInterval(loadLive, 4000);
     api
       .analyticsBaseline()
       .then(setBaseline)
       .catch(() => {});
+    api
+      .policy()
+      .then(setPolicy)
+      .catch(() => {});
+    api
+      .health()
+      .then((health) => setDataMode(health))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   if (error) {
@@ -71,18 +95,87 @@ export default function CommandCenter() {
   );
 
   const bizMetrics = modelEval?.business_metrics;
+  const lifecycleStage = getLifecycleStage(live, latestEvent);
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-display text-2xl font-semibold">
-          Revenue Recovery Command Center
-        </h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          Live case data from the store, plus held-out evaluation metrics from
-          the real ML pipeline.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-[0.16em] text-recover">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-recover" />
+            RecoverAI / Agent Online
+          </div>
+          <h1 className="mt-2 font-display text-2xl font-semibold">
+            Autonomous Revenue Recovery Control Center
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Controlled decisions from live cases, policy gates, and verified
+            outcomes.
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-xs uppercase tracking-wide text-text-tertiary">
+            Verified recovered revenue
+          </div>
+          <div className="mt-1 font-mono text-4xl font-semibold text-recover">
+            {formatINR(live.revenue_recovered)}
+          </div>
+        </div>
+        {dataMode && (
+          <div className="text-right text-xs font-mono uppercase tracking-wide text-text-tertiary">
+            <div>Data mode: SEEDED DEMO</div>
+            <div className="mt-1 text-recover">
+              Database:{" "}
+              {dataMode.database === "mongo" ? "MONGODB" : "LOCAL FILE"}
+            </div>
+          </div>
+        )}
       </div>
+
+      <Card className="p-5">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="font-display text-base font-semibold">
+              Recovery lifecycle
+            </h2>
+            <p className="mt-1 text-xs text-text-tertiary">
+              The latest audit-backed fleet signal in the guarded recovery
+              workflow.
+            </p>
+          </div>
+          <span className="font-mono text-xs uppercase tracking-wide text-ai">
+            Current: {lifecycleStage}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+          {["DETECT", "DIAGNOSE", "PREDICT", "POLICY", "EXECUTE", "VERIFY"].map(
+            (stage, index) => {
+              const currentIndex = [
+                "DETECT",
+                "DIAGNOSE",
+                "PREDICT",
+                "POLICY",
+                "EXECUTE",
+                "VERIFY",
+              ].indexOf(lifecycleStage);
+              return (
+                <div key={stage} className="flex items-center gap-2">
+                  <div
+                    className={`flex-1 rounded-md border px-2 py-3 text-center text-xs font-semibold ${index === currentIndex ? "border-ai bg-ai-soft text-ai" : index < currentIndex ? "border-recover/40 bg-recover-soft text-recover" : "border-line text-text-tertiary"}`}
+                  >
+                    {stage}
+                  </div>
+                  {index < 5 && (
+                    <span className="hidden text-text-tertiary md:inline">
+                      →
+                    </span>
+                  )}
+                </div>
+              );
+            },
+          )}
+        </div>
+      </Card>
 
       <Card className="p-5">
         <div className="mb-1 flex items-center gap-2">
@@ -92,13 +185,56 @@ export default function CommandCenter() {
           </h2>
         </div>
         <p className="mb-3 text-xs text-text-tertiary">
-          Real audit events, polled from the backend every 4s — nothing here is
-          simulated for display.
+          Real audit events polled from the backend every 4s.
         </p>
         <LiveAgentActivity limit={12} />
       </Card>
 
-      <div className="grid grid-cols-4 gap-4">
+      {policy && (
+        <Card className="border-risk/40 bg-risk-soft/15 p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-xs font-mono uppercase tracking-wide text-risk">
+                Policy gate
+              </div>
+              <h2 className="mt-1 font-display text-base font-semibold">
+                Safety controls active
+              </h2>
+            </div>
+            <span className="text-xs text-text-secondary">
+              AI recommends. Policy decides.
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+            <PolicyCheck
+              label="Recovery confidence"
+              value={`${Math.round(policy.MIN_RECOVERY_CONFIDENCE * 100)}% minimum`}
+            />
+            <PolicyCheck
+              label="Automated amount"
+              value={formatINR(policy.MAX_AUTOMATED_RECOVERY_AMOUNT)}
+            />
+            <PolicyCheck
+              label="Retry limit"
+              value={`${policy.MAX_AUTOMATED_RETRIES} attempts`}
+            />
+            <PolicyCheck
+              label="Customer contact"
+              value={`${policy.MAX_INTERVENTIONS_PER_CUSTOMER} interventions`}
+            />
+            <PolicyCheck
+              label="High-value actions"
+              value={
+                policy.HIGH_VALUE_TRANSACTION_REQUIRES_APPROVAL
+                  ? "Human approval"
+                  : "Policy allowed"
+              }
+            />
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Metric
           label="Revenue At Risk (live cases)"
           value={formatINR(live.revenue_at_risk)}
@@ -354,6 +490,39 @@ export default function CommandCenter() {
           </ResponsiveContainer>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function getLifecycleStage(live, latestEvent) {
+  if (latestEvent?.event) {
+    if (
+      latestEvent.event.includes("VERIFICATION") ||
+      latestEvent.event.includes("RECOVERED")
+    )
+      return "VERIFY";
+    if (latestEvent.event.includes("ACTION")) return "EXECUTE";
+    if (
+      latestEvent.event.includes("POLICY") ||
+      latestEvent.event.includes("APPROVAL")
+    )
+      return "POLICY";
+    if (latestEvent.event.includes("PROBABILITY")) return "PREDICT";
+    if (latestEvent.event.includes("ROOT_CAUSE")) return "DIAGNOSE";
+    if (latestEvent.event.includes("PAYMENT_FAILURE")) return "DETECT";
+  }
+  if (live.successful_recoveries > 0) return "VERIFY";
+  if (live.awaiting_approval > 0) return "POLICY";
+  if (live.active_cases > 0) return "EXECUTE";
+  if (live.cases_analyzed > 0) return "DIAGNOSE";
+  return "DETECT";
+}
+
+function PolicyCheck({ label, value }) {
+  return (
+    <div className="border-l border-risk/40 pl-3">
+      <div className="text-xs text-text-tertiary">{label}</div>
+      <div className="mt-1 font-mono text-risk">{value}</div>
     </div>
   );
 }

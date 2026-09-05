@@ -58,8 +58,16 @@ export function LiveAgentActivity({ limit = 12 }) {
           <span className="w-24 shrink-0">
             <ActorBadge actor={e.actor} />
           </span>
+          <span className="w-20 shrink-0 font-mono text-xs text-ai">
+            {eventStage(e.event)}
+          </span>
           <span className="flex-1 truncate">
-            {e.event.replaceAll("_", " ").toLowerCase()}
+            <span className="font-medium">{eventLabel(e.event)}</span>
+            {e.reason && (
+              <span className="ml-2 text-xs text-text-secondary">
+                {e.reason}
+              </span>
+            )}
           </span>
           {e.amount != null && (
             <span className="shrink-0 font-mono text-xs text-text-secondary">
@@ -76,4 +84,19 @@ export function LiveAgentActivity({ limit = 12 }) {
       ))}
     </div>
   );
+}
+
+function eventStage(event) {
+  if (event.includes("PAYMENT_FAILURE")) return "DETECT";
+  if (event.includes("ROOT_CAUSE")) return "DIAGNOSE";
+  if (event.includes("PROBABILITY")) return "PREDICT";
+  if (event.includes("POLICY") || event.includes("APPROVAL")) return "POLICY";
+  if (event.includes("ACTION")) return "EXECUTE";
+  if (event.includes("VERIFICATION") || event.includes("RECOVERED"))
+    return "VERIFY";
+  return "CONTROL";
+}
+
+function eventLabel(event) {
+  return event.replaceAll("_", " ").toLowerCase();
 }
