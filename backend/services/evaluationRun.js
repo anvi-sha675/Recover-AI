@@ -13,7 +13,7 @@ const AI_SERVICE_DIR = path.join(__dirname, "..", "..", "ai-service");
 const METRICS_PATH = path.join(AI_SERVICE_DIR, "metrics.json");
 
 export async function executeEvaluationPipeline() {
-  const pythonBin = process.env.PYTHON_BIN || "python3";
+  const pythonBin = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
   await execFileAsync(pythonBin, ["generate_dataset.py"], { cwd: AI_SERVICE_DIR, timeout: 120000 });
   await execFileAsync(pythonBin, ["train_model.py"], { cwd: AI_SERVICE_DIR, timeout: 120000 });
 }
