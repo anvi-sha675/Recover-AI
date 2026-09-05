@@ -27,7 +27,6 @@ __pycache__/
 *.py[cod]
 
 # ML artifacts / local generated data
-ai-service/metrics.json
 data/*.csv
 
 # IDE

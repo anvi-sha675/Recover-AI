@@ -1,0 +1,260 @@
+{
+  "chosen_model": "logistic_regression",
+  "validation_results": {
+    "logistic_regression": {
+      "precision": 0.7078,
+      "recall": 0.6246,
+      "f1": 0.6636,
+      "roc_auc": 0.6745,
+      "confusion_matrix": {
+        "labels": [
+          "not_recoverable",
+          "recoverable"
+        ],
+        "matrix": [
+          [
+            141,
+            90
+          ],
+          [
+            131,
+            218
+          ]
+        ]
+      },
+      "class_distribution": {
+        "1": 0.6017,
+        "0": 0.3983
+      }
+    },
+    "random_forest": {
+      "precision": 0.7026,
+      "recall": 0.616,
+      "f1": 0.6565,
+      "roc_auc": 0.6683,
+      "confusion_matrix": {
+        "labels": [
+          "not_recoverable",
+          "recoverable"
+        ],
+        "matrix": [
+          [
+            140,
+            91
+          ],
+          [
+            134,
+            215
+          ]
+        ]
+      },
+      "class_distribution": {
+        "1": 0.6017,
+        "0": 0.3983
+      }
+    }
+  },
+  "test_results": {
+    "precision": 0.7575,
+    "recall": 0.6096,
+    "f1": 0.6756,
+    "roc_auc": 0.7139,
+    "confusion_matrix": {
+      "labels": [
+        "not_recoverable",
+        "recoverable"
+      ],
+      "matrix": [
+        [
+          134,
+          73
+        ],
+        [
+          146,
+          228
+        ]
+      ]
+    },
+    "class_distribution": {
+      "1": 0.6437,
+      "0": 0.3563
+    }
+  },
+  "business_metrics": {
+    "methodology": "FAIR_SHARED_OUTCOME_MODEL",
+    "methodology_note": "Both strategies are scored with the identical rule (genuinely recoverable AND the action taken addresses the failure reason). No independent random success-rate assumption is used for either strategy. See docs/evaluation.md and EFFECTIVE_ACTIONS in train_model.py.",
+    "total_revenue_at_risk": 1373477.3,
+    "total_revenue_recovered_automated": 236317.95,
+    "total_revenue_recovered_via_escalation": 491654.98,
+    "total_revenue_recovered": 727972.93,
+    "recovery_rate": 0.5318,
+    "average_recovery_per_case": 2355.9,
+    "intervention_success_rate": 0.8947,
+    "unnecessary_intervention_rate": 0.2754,
+    "escalation_rate": 0.7711,
+    "baseline_revenue_recovered": 278967.63,
+    "recovery_lift_vs_baseline_pct": 160.95,
+    "cases_evaluated": 581
+  },
+  "feature_importance": [
+    {
+      "feature": "failure_reason_TEMPORARY_PAYMENT_FAILURE",
+      "importance": 0.2047
+    },
+    {
+      "feature": "failure_reason_REPEATED_PAYMENT_FAILURE",
+      "importance": 0.1446
+    },
+    {
+      "feature": "failure_reason_OVERDUE_RECEIVABLE",
+      "importance": 0.1199
+    },
+    {
+      "feature": "previous_successes",
+      "importance": 0.0853
+    },
+    {
+      "feature": "failure_reason_UNKNOWN",
+      "importance": 0.0771
+    },
+    {
+      "feature": "failure_reason_CHECKOUT_ABANDONMENT",
+      "importance": 0.0645
+    },
+    {
+      "feature": "customer_activity_days",
+      "importance": 0.0342
+    },
+    {
+      "feature": "failure_reason_INSUFFICIENT_FUNDS",
+      "importance": 0.0338
+    },
+    {
+      "feature": "failure_reason_PAYMENT_METHOD_ISSUE",
+      "importance": 0.0307
+    },
+    {
+      "feature": "time_since_failure_hours",
+      "importance": 0.0299
+    },
+    {
+      "feature": "payment_method_wallet",
+      "importance": 0.0258
+    },
+    {
+      "feature": "subscription_status_active",
+      "importance": 0.0258
+    }
+  ],
+  "threshold_analysis": {
+    "sweep": [
+      {
+        "threshold": 0.4,
+        "cases_selected": 396,
+        "precision": 0.7424,
+        "recall": 0.7861,
+        "gross_recovery": 606823.08,
+        "intervention_cost": 10369.0,
+        "net_recovery": 596454.08
+      },
+      {
+        "threshold": 0.45,
+        "cases_selected": 346,
+        "precision": 0.7601,
+        "recall": 0.7032,
+        "gross_recovery": 539449.57,
+        "intervention_cost": 8735.0,
+        "net_recovery": 530714.57
+      },
+      {
+        "threshold": 0.5,
+        "cases_selected": 301,
+        "precision": 0.7575,
+        "recall": 0.6096,
+        "gross_recovery": 463053.5,
+        "intervention_cost": 7521.0,
+        "net_recovery": 455532.5
+      },
+      {
+        "threshold": 0.55,
+        "cases_selected": 257,
+        "precision": 0.7938,
+        "recall": 0.5455,
+        "gross_recovery": 415383.58,
+        "intervention_cost": 5708.0,
+        "net_recovery": 409675.58
+      },
+      {
+        "threshold": 0.6,
+        "cases_selected": 210,
+        "precision": 0.819,
+        "recall": 0.4599,
+        "gross_recovery": 342907.31,
+        "intervention_cost": 4144.0,
+        "net_recovery": 338763.31
+      },
+      {
+        "threshold": 0.65,
+        "cases_selected": 167,
+        "precision": 0.8443,
+        "recall": 0.377,
+        "gross_recovery": 296841.09,
+        "intervention_cost": 2797.0,
+        "net_recovery": 294044.09
+      },
+      {
+        "threshold": 0.7,
+        "cases_selected": 134,
+        "precision": 0.8955,
+        "recall": 0.3209,
+        "gross_recovery": 249166.99,
+        "intervention_cost": 2041.0,
+        "net_recovery": 247125.99
+      },
+      {
+        "threshold": 0.75,
+        "cases_selected": 105,
+        "precision": 0.9143,
+        "recall": 0.2567,
+        "gross_recovery": 212780.44,
+        "intervention_cost": 1402.0,
+        "net_recovery": 211378.44
+      },
+      {
+        "threshold": 0.8,
+        "cases_selected": 63,
+        "precision": 0.9524,
+        "recall": 0.1604,
+        "gross_recovery": 142477.11,
+        "intervention_cost": 686.0,
+        "net_recovery": 141791.11
+      }
+    ],
+    "economic_operating_point": {
+      "threshold": 0.4,
+      "cases_selected": 396,
+      "precision": 0.7424,
+      "recall": 0.7861,
+      "gross_recovery": 606823.08,
+      "intervention_cost": 10369.0,
+      "net_recovery": 596454.08
+    }
+  },
+  "seed": 42,
+  "features": {
+    "numeric": [
+      "amount",
+      "previous_attempts",
+      "previous_successes",
+      "customer_activity_days",
+      "time_since_failure_hours",
+      "checkout_duration_sec",
+      "days_overdue"
+    ],
+    "categorical": [
+      "failure_reason",
+      "payment_method",
+      "subscription_status"
+    ]
+  }
+}
