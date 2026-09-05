@@ -25,7 +25,6 @@ backend/db/recoverai.db.json
 # Python
 __pycache__/
 *.py[cod]
-*.joblib
 
 # ML artifacts / local generated data
 ai-service/metrics.json
