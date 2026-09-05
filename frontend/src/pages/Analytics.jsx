@@ -61,6 +61,15 @@ export default function Analytics() {
 
   if (!modelEval)
     return <div className="text-text-secondary">Loading analytics…</div>;
+  if (live && live.cases_analyzed === 0) {
+    return (
+      <Card className="p-6 text-text-secondary">
+        No recovery data available. Run{" "}
+        <span className="font-mono text-ai">npm run seed</span> from the backend
+        to load the deterministic demo dataset.
+      </Card>
+    );
+  }
   if (modelEval.error) {
     return <Card className="p-6 text-block">{modelEval.error}</Card>;
   }
