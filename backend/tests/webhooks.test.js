@@ -7,6 +7,7 @@ process.env.MONGODB_URI = "";
 process.env.RAZORPAY_WEBHOOK_SECRET = "test_webhook_secret_123";
 
 const db = (await import("../db/index.js")).default;
+const { makeRecoveryCase } = await import("../models/schemas.js");
 const express = (await import("express")).default;
 const webhookRoutes = (await import("../routes/webhooks.js")).default;
 
@@ -58,6 +59,39 @@ test("webhook: rejects a request with no signature header at all", async () => {
   const { status, body } = await postWebhook({ id: "evt_test_3", event: "payment_link.paid" }, { skipSignature: true });
   assert.equal(status, 400);
   assert.match(body.error, /Missing X-Razorpay-Signature/);
+});
+
+test("webhook: rejects a signed payment amount that does not match the recovery case", async () => {
+  await db.reset();
+  const recoveryCase = makeRecoveryCase({
+    case_id: "case_webhook_amount_guard",
+    transaction_id: "txn_webhook_amount_guard",
+    customer_id: "cust_webhook_amount_guard",
+    amount: 35000,
+    risk_score: 0.1,
+    recovery_probability: 0.9,
+    root_cause: "TEMPORARY_PAYMENT_FAILURE",
+    recommended_action: "PAYMENT_LINK",
+    policy_status: "ALLOWED",
+  });
+  await db.insert("recovery_cases", recoveryCase);
+  await db.insert("recovery_actions", {
+    action_id: "action_webhook_amount_guard",
+    case_id: recoveryCase.case_id,
+    action_type: "PAYMENT_LINK",
+    result: JSON.stringify({ payment_link_id: "plink_amount_guard" }),
+  });
+
+  const { status, body } = await postWebhook({
+    id: "evt_webhook_amount_guard",
+    event: "payment_link.paid",
+    payload: { payment_link: { entity: { id: "plink_amount_guard", amount_paid: 1000 } } },
+  });
+
+  assert.equal(status, 200);
+  assert.equal(body.recovery_result.transitioned, false);
+  assert.match(body.recovery_result.reason, /amount mismatch/);
+  assert.equal(await db.count("verification_records"), 0, "mismatched payments must not create verification records");
 });
 
 test("webhook: duplicate delivery of the SAME event id is processed exactly once (idempotent)", async () => {

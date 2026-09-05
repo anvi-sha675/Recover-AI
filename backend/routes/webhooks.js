@@ -33,6 +33,15 @@ async function handleVerifiedPaymentEvent({ paymentLinkId, amount, providerEvent
   const caseRecord = await db.findOne("recovery_cases", (c) => c.case_id === caseId);
   if (!caseRecord) return { matched: false, reason: `Case ${caseId} no longer exists` };
 
+  if (toPaise(amount) !== (caseRecord.amount_paise ?? toPaise(caseRecord.amount))) {
+    return {
+      matched: true,
+      transitioned: false,
+      reason: `Payment amount mismatch: received ${toPaise(amount)} paise, expected ${caseRecord.amount_paise ?? toPaise(caseRecord.amount)} paise. Routed for manual reconciliation.`,
+      case_id: caseId,
+    };
+  }
+
   const verificationRecord = {
     verification_id: nanoid(10),
     case_id: caseId,
@@ -107,13 +116,6 @@ router.post("/razorpay", async (req, res) => {
     return res.status(200).json({ status: "ALREADY_PROCESSED", provider_event_id: eventId });
   }
 
-  await logWebhookEvent({
-    signatureVerified: true,
-    status: "PROCESSED",
-    eventId,
-    eventType: req.body?.event || "unknown",
-  });
-
   let recoveryResult = null;
   if (req.body?.event === "payment_link.paid") {
     const entity = req.body?.payload?.payment_link?.entity;
@@ -125,6 +127,13 @@ router.post("/razorpay", async (req, res) => {
       });
     }
   }
+
+  await logWebhookEvent({
+    signatureVerified: true,
+    status: "PROCESSED",
+    eventId,
+    eventType: req.body?.event || "unknown",
+  });
 
   res.status(200).json({ status: "PROCESSED", provider_event_id: eventId, recovery_result: recoveryResult });
 });
