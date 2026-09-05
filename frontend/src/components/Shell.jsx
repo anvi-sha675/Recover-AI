@@ -1,29 +1,29 @@
 import { NavLink } from "react-router-dom";
 
 const NAV = [
-  { to: "/", label: "Command Center", exact: true },
-  { to: "/inbox", label: "Revenue Risk Inbox" },
-  { to: "/approvals", label: "Approval Queue" },
-  { to: "/analytics", label: "Analytics" },
-  { to: "/voice", label: "Voice Recovery" },
-  { to: "/judge", label: "Judge Mode" },
-  { to: "/settings", label: "Settings" },
+  { to: "/", label: "Command Center", short: "CC", exact: true },
+  { to: "/inbox", label: "Revenue Risk Inbox", short: "RISK" },
+  { to: "/approvals", label: "Approval Queue", short: "APPROVE" },
+  { to: "/analytics", label: "Analytics", short: "DATA" },
+  { to: "/voice", label: "Voice Recovery", short: "VOICE" },
+  { to: "/judge", label: "Judge Mode", short: "JUDGE" },
+  { to: "/settings", label: "Settings", short: "SET" },
 ];
 
 export function Shell({ children }) {
   return (
     <div className="min-h-screen bg-ink-950">
       <div className="flex">
-        <aside className="sticky top-0 h-screen w-64 shrink-0 border-r border-line px-5 py-6">
+        <aside className="sticky top-0 h-screen w-16 shrink-0 border-r border-line px-2 py-6 md:w-64 md:px-5">
           <div className="flex items-center gap-2 px-1">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-ai text-sm font-bold text-white">
               R
             </div>
-            <div className="font-display text-lg font-semibold tracking-tight">
+            <div className="hidden font-display text-lg font-semibold tracking-tight md:block">
               RecoverAI
             </div>
           </div>
-          <div className="mt-1 px-1 text-xs text-text-tertiary">
+          <div className="mt-1 hidden px-1 text-xs text-text-tertiary md:block">
             Revenue Recovery Agent
           </div>
 
@@ -34,19 +34,20 @@ export function Shell({ children }) {
                 to={item.to}
                 end={item.exact}
                 className={({ isActive }) =>
-                  `rounded-md px-3 py-2 text-sm transition-colors ${
+                  `rounded-md px-2 py-2 text-center text-[10px] transition-colors md:px-3 md:text-left md:text-sm ${
                     isActive
                       ? "bg-ai-soft text-ai font-medium"
                       : "text-text-secondary hover:bg-ink-800 hover:text-text-primary"
                   }`
                 }
               >
-                {item.label}
+                <span className="md:hidden">{item.short}</span>
+                <span className="hidden md:inline">{item.label}</span>
               </NavLink>
             ))}
           </nav>
 
-          <div className="mt-10 flex flex-col gap-2">
+          <div className="mt-10 hidden flex-col gap-2 md:flex">
             <div className="rounded-md border border-line-soft bg-ink-900 px-3 py-3 text-xs text-text-tertiary">
               <div className="mb-1 font-medium text-text-secondary">
                 Razorpay mode
@@ -61,7 +62,9 @@ export function Shell({ children }) {
             </div>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-8 py-6">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-6">
+          {children}
+        </main>
       </div>
     </div>
   );
