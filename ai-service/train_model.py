@@ -149,6 +149,58 @@ def business_metrics(df, proba, pred, threshold=0.70, max_auto_amount=10000):
     return metrics
 
 
+def threshold_sweep(df, proba):
+    from sklearn.metrics import precision_score, recall_score
+
+    from root_cause import diagnose, recovery_economics
+
+    df = df.copy()
+    df["proba"] = proba
+    recoverai_actions = [diagnose(row.to_dict())["recommended_action"] for _, row in df.iterrows()]
+    df["recoverai_action"] = recoverai_actions
+
+    EFFECTIVE_ACTIONS = {
+        "TEMPORARY_PAYMENT_FAILURE": {"PAYMENT_RETRY", "PAYMENT_LINK"},
+        "INSUFFICIENT_FUNDS": {"REMINDER", "PAYMENT_LINK"},
+        "PAYMENT_METHOD_ISSUE": {"PAYMENT_LINK"},
+        "REPEATED_PAYMENT_FAILURE": {"HUMAN_ESCALATION"},
+        "CHECKOUT_ABANDONMENT": {"PAYMENT_LINK", "REMINDER"},
+        "SUBSCRIPTION_FAILURE": {"SUBSCRIPTION_RETRY"},
+        "OVERDUE_RECEIVABLE": {"REMINDER", "HUMAN_ESCALATION"},
+        "UNKNOWN": {"HUMAN_ESCALATION"},
+    }
+
+    results = []
+    for threshold in [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]:
+        selected = df["proba"] >= threshold
+        pred = selected.astype(int)
+        precision = precision_score(df[TARGET], pred, zero_division=0)
+        recall = recall_score(df[TARGET], pred, zero_division=0)
+
+        gross = 0.0
+        cost = 0.0
+        for _, row in df[selected].iterrows():
+            action = row["recoverai_action"]
+            econ = recovery_economics(row["amount"], row["proba"], action)
+            is_effective = action != "STOP" and action in EFFECTIVE_ACTIONS.get(row["failure_reason"], set())
+            if row[TARGET] == 1 and is_effective:
+                gross += row["amount"]
+            cost += econ["intervention_cost"]
+
+        results.append({
+            "threshold": threshold,
+            "cases_selected": int(selected.sum()),
+            "precision": round(float(precision), 4),
+            "recall": round(float(recall), 4),
+            "gross_recovery": round(gross, 2),
+            "intervention_cost": round(cost, 2),
+            "net_recovery": round(gross - cost, 2),
+        })
+
+    economic_operating_point = max(results, key=lambda r: r["net_recovery"])
+    return {"sweep": results, "economic_operating_point": economic_operating_point}
+
+
 def extract_feature_importance(pipe, model_name):
     """
     Extracts real feature importance from the trained pipeline - never
@@ -194,7 +246,7 @@ def main():
         val_results[name] = res
         pipelines[name] = pipe
         print(f"[val] {name}: {res}")
-        
+
     lr_f1 = val_results["logistic_regression"]["f1"]
     rf_f1 = val_results["random_forest"]["f1"]
     chosen = "random_forest" if rf_f1 > lr_f1 + 0.03 else "logistic_regression"
@@ -205,6 +257,7 @@ def main():
     biz = business_metrics(test, proba, pred)
 
     feature_importance = extract_feature_importance(final_pipe, chosen)
+    threshold_analysis = threshold_sweep(test, proba)
 
     joblib.dump(final_pipe, os.path.join(BASE, "recovery_model.joblib"))
 
@@ -214,6 +267,7 @@ def main():
         "test_results": test_results,
         "business_metrics": biz,
         "feature_importance": feature_importance,
+        "threshold_analysis": threshold_analysis,
         "seed": 42,
         "features": {"numeric": NUM_FEATURES, "categorical": CAT_FEATURES},
     }

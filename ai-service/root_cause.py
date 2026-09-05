@@ -102,9 +102,16 @@ def recovery_economics(amount: float, recovery_probability: float, action: str) 
     expected_net_recovery = round(expected_recovery - cost, 2)
     return {
         "amount_at_risk": round(amount, 2),
+        "amount_at_risk_paise": round(amount * 100),
         "recovery_probability": recovery_probability,
+        "gross_expected_recovery": expected_recovery,
+        "gross_expected_recovery_paise": round(expected_recovery * 100),
+        "intervention_cost": cost,
+        "intervention_cost_paise": round(cost * 100),
+        "action_cost_basis": "MODELED_ASSUMPTION - illustrative flat cost per intervention type, not measured operational cost",
+        "net_expected_recovery": expected_net_recovery,
+        "net_expected_recovery_paise": round(expected_net_recovery * 100),
         "expected_recovery": expected_recovery,
         "action_cost": cost,
-        "action_cost_basis": "MODELED_ASSUMPTION - illustrative flat cost per intervention type, not measured operational cost",
         "expected_net_recovery": expected_net_recovery,
     }
