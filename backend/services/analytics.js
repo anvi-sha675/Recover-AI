@@ -1,17 +1,34 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+// import fs from "fs";
+// import path from "path";
+// import { fileURLToPath } from "url";
 import db from "../db/index.js";
 import { sumRupeesSafely } from "./money.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const METRICS_PATH = path.join(__dirname, "..", "..", "ai-service", "metrics.json");
+// const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// const METRICS_PATH = path.join(__dirname, "..", "..", "ai-service", "metrics.json");
 
-export function getModelMetrics() {
-  if (!fs.existsSync(METRICS_PATH)) {
-    return { error: "Model metrics not found. Run: cd ai-service && python3 train_model.py" };
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
+
+export async function getModelMetrics() {
+  if (!AI_SERVICE_URL) {
+    return { error: "AI service URL is not configured." };
   }
-  return JSON.parse(fs.readFileSync(METRICS_PATH, "utf-8"));
+
+  try {
+    const response = await fetch(`${AI_SERVICE_URL}/metrics`);
+
+    if (!response.ok) {
+      return {
+        error: `AI metrics service unavailable (${response.status}).`,
+      };
+    }
+
+    return await response.json();
+  } catch {
+    return {
+      error: "Unable to reach AI metrics service.",
+    };
+  }
 }
 
 export async function getLiveDashboardMetrics() {
@@ -76,8 +93,8 @@ function countAmountBy(arr, key) {
   return out;
 }
 
-export function getBaselineComparison() {
-  const metrics = getModelMetrics();
+export async function getBaselineComparison() {
+  const metrics = await getModelMetrics();
   if (metrics.error) return metrics;
   const biz = metrics.business_metrics;
   const CALC_TAG = "SIMULATED_DISCLOSED_MODEL";
