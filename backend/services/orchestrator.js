@@ -77,6 +77,48 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     ? await db.findOne("recovery_cases", (c) => c.case_id === existingCaseId)
     : null;
 
+  if (existingCaseId && !recoveryCase) {
+    throw new Error(`Recovery case ${existingCaseId} was not found.`);
+  }
+  if (recoveryCase && (
+    recoveryCase.transaction_id !== transaction.transaction_id ||
+    recoveryCase.customer_id !== transaction.customer_id ||
+    (recoveryCase.amount_paise ?? toPaise(recoveryCase.amount)) !== toPaise(transaction.amount)
+  )) {
+    throw new Error(`Recovery case ${recoveryCase.case_id} does not match the supplied transaction.`);
+  }
+  if (recoveryCase?.current_status === "STOPPED") {
+    return {
+      case: recoveryCase,
+      decision: {
+        allowed: false,
+        requiresApproval: false,
+        stop: true,
+        escalate: false,
+        reason: "Case is already stopped; no further financial action is permitted.",
+        policyTriggered: "TERMINAL_CASE",
+      },
+      executed: false,
+      request_id: rid,
+    };
+  }
+
+  let persistedApproval = null;
+  if (humanApprovalGranted) {
+    persistedApproval = recoveryCase
+      ? await db.findOne("approvals", (approval) => (
+        approval.case_id === recoveryCase.case_id &&
+        approval.status === "APPROVED" &&
+        approval.transaction_id === transaction.transaction_id &&
+        approval.customer_id === transaction.customer_id &&
+        approval.amount_paise === toPaise(transaction.amount)
+      ))
+      : null;
+    if (!recoveryCase || recoveryCase.current_status !== "AWAITING_APPROVAL" || !persistedApproval) {
+      humanApprovalGranted = false;
+    }
+  }
+
   await auditWithRequest(recoveryCase?.case_id || "PENDING", "SYSTEM", "PAYMENT_FAILURE_DETECTED",
     "Transaction flagged as revenue at risk", "OK", { transaction_id: transaction.transaction_id });
 
@@ -85,6 +127,19 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     return { error: analysis.error, detail: analysis.detail };
   }
   const { recovery_probability, risk_score, diagnosis, economics } = analysis;
+
+  if (humanApprovalGranted && persistedApproval?.action_type !== diagnosis.recommended_action) {
+    await db.update("approvals", (approval) => approval.approval_id === persistedApproval.approval_id, {
+      status: "INVALIDATED",
+      invalidation_reason: "Recovery action changed during re-analysis.",
+      invalidated_at: new Date().toISOString(),
+    });
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", "APPROVAL_INVALIDATED",
+      "Previously approved action changed during re-analysis; fresh approval required.", "INVALIDATED",
+      { previous_action: persistedApproval.action_type, recommended_action: diagnosis.recommended_action });
+    humanApprovalGranted = false;
+    persistedApproval = null;
+  }
 
   if (!recoveryCase) {
     recoveryCase = makeRecoveryCase({
@@ -133,6 +188,19 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     decision.allowed ? "POLICY_GATE_PASSED" : (decision.requiresApproval ? "HUMAN_APPROVAL_REQUIRED" : "POLICY_BLOCKED"),
     decision.reason, decision.allowed ? "ALLOWED" : "BLOCKED", { policyTriggered: decision.policyTriggered });
 
+  if (recoveryCase.current_status === "AWAITING_APPROVAL" && !persistedApproval) {
+    decision.allowed = false;
+    decision.requiresApproval = true;
+    decision.reason = "Case remains paused until a persisted human approval is granted.";
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", "AWAITING_HUMAN_APPROVAL", decision.reason, "PENDING", {});
+    return {
+      case: await db.findOne("recovery_cases", (c) => c.case_id === recoveryCase.case_id),
+      decision,
+      executed: false,
+      request_id: rid,
+    };
+  }
+
   // Stop path
   if (decision.stop) {
     const newStatus = decision.policyTriggered === "STOP_AFTER_SUCCESS"
@@ -153,6 +221,10 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     await db.insert("approvals", {
       approval_id: nanoid(10),
       case_id: recoveryCase.case_id,
+      transaction_id: transaction.transaction_id,
+      customer_id: transaction.customer_id,
+      amount_paise: toPaise(transaction.amount),
+      action_type: diagnosis.recommended_action,
       status: "PENDING",
       created_at: new Date().toISOString(),
     });
@@ -163,6 +235,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
   if (humanApprovalGranted) {
     await auditWithRequest(recoveryCase.case_id, "HUMAN_REVIEWER", "APPROVAL_GRANTED",
       "Human reviewer approved recovery action", "APPROVED", {});
+    decision.allowed = true;
     decision.requiresApproval = false;
     decision.reason = `${decision.reason} -> OVERRIDDEN by human approval.`;
   }
@@ -260,7 +333,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
       `₹${transaction.amount} recovered via ${actionType}`, "SUCCESS", { verification_id: verificationRecord.verification_id });
     await auditWithRequest(recoveryCase.case_id, "SYSTEM", "CASE_CLOSED", "Case closed - payment recovered", "CLOSED", {});
   } else {
-    const nextAttempt = recoveryCase.attempt_count + 1;
+    const nextAttempt = attemptNumber;
     const policyConfig = await policyEngine.getPolicyConfig();
     if (nextAttempt >= policyConfig.MAX_AUTOMATED_RETRIES) {
       finalStatus = "ESCALATED";
