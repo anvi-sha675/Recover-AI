@@ -7,9 +7,11 @@ import voiceRoutes from "./routes/voice.js";
 import webhookRoutes from "./routes/webhooks.js";
 import { razorpayMode } from "./services/razorpayService.js";
 import { getBackendName } from "./db/index.js";
+import { requestIdMiddleware } from "./services/requestId.js";
 
 const app = express();
 app.use(cors());
+app.use(requestIdMiddleware);
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
@@ -18,6 +20,9 @@ app.get("/api/health", async (req, res) => {
   const dbBackend = await getBackendName();
   res.json({
     status: "ok",
+    database: dbBackend,
+    environment: process.env.NODE_ENV || "demo",
+    authentication_configured: Boolean(process.env.ADMIN_API_KEY || process.env.REVIEWER_API_KEY),
     razorpay_mode: razorpayMode,
     db_backend: dbBackend,
     db_backend_label: dbBackend === "mongo" ? "MongoDB (real)" : "DEMO / LOCAL SIMULATION MODE (JSON file store)",

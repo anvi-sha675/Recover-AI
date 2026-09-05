@@ -19,6 +19,7 @@ const TransactionSchema = new Schema({
   transaction_id: { type: String, index: true, unique: true },
   customer_id: { type: String, index: true },
   amount: Number,
+  amount_paise: Number,
   status: String,
   payment_method: String,
   failure_reason: String,
@@ -33,6 +34,7 @@ const RecoveryCaseSchema = new Schema({
   transaction_id: String,
   customer_id: { type: String, index: true },
   amount: Number,
+  amount_paise: Number,
   risk_score: Number,
   recovery_probability: Number,
   root_cause: String,
@@ -65,6 +67,7 @@ const VerificationRecordSchema = new Schema({
   case_id: { type: String, index: true },
   transaction_id: { type: String, index: true },
   amount: Number,
+  amount_paise: Number,
   status: String, // VERIFICATION_SUCCESS | VERIFICATION_FAILED
   provider: String, // razorpay | simulation
   execution_mode: String, // LIVE_TEST_MODE | SIMULATION
@@ -86,6 +89,10 @@ const AuditLogSchema = new Schema({
 const ApprovalSchema = new Schema({
   approval_id: { type: String, index: true, unique: true },
   case_id: { type: String, index: true },
+  transaction_id: String,
+  customer_id: String,
+  amount_paise: Number,
+  action_type: String,
   status: String,
   created_at: String,
 });
