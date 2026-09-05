@@ -40,6 +40,8 @@ const FIELD_META = {
   },
 };
 
+const EDITABLE_POLICY_KEYS = Object.keys(FIELD_META);
+
 export default function Settings() {
   const [policy, setPolicy] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -61,9 +63,15 @@ export default function Settings() {
 
   const save = async () => {
     setSaving(true);
-    await api.updatePolicy(policy);
-    setSaving(false);
-    setSaved(true);
+    try {
+      const editablePolicy = Object.fromEntries(
+        EDITABLE_POLICY_KEYS.map((key) => [key, policy[key]]),
+      );
+      await api.updatePolicy(editablePolicy);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!policy)
