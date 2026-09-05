@@ -1,8 +1,10 @@
-import { nanoid } from "nanoid"; import db from "../db/index.js";
+import { nanoid } from "nanoid";
+import db from "../db/index.js";
 import * as policyEngine from "./policyEngine.js";
 import * as razorpay from "./razorpayService.js";
 import { makeRecoveryCase, makeRecoveryAction, makeAuditLog } from "../models/schemas.js";
 import { transitionCaseStatus } from "./caseStateMachine.js";
+import { toPaise } from "./money.js";
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
@@ -67,12 +69,15 @@ export async function analyze(transaction) {
   };
 }
 
-export async function runRecovery(transaction, { humanApprovalGranted = false, existingCaseId = null } = {}) {
+export async function runRecovery(transaction, { humanApprovalGranted = false, existingCaseId = null, requestId = null } = {}) {
+  const rid = requestId || `req_${nanoid(12)}`;
+  const auditWithRequest = (caseId, actor, event, reason, result, metadata = {}) =>
+    audit(caseId, actor, event, reason, result, { ...metadata, request_id: rid });
   let recoveryCase = existingCaseId
     ? await db.findOne("recovery_cases", (c) => c.case_id === existingCaseId)
     : null;
 
-  await audit(recoveryCase?.case_id || "PENDING", "SYSTEM", "PAYMENT_FAILURE_DETECTED",
+  await auditWithRequest(recoveryCase?.case_id || "PENDING", "SYSTEM", "PAYMENT_FAILURE_DETECTED",
     "Transaction flagged as revenue at risk", "OK", { transaction_id: transaction.transaction_id });
 
   const analysis = await analyze(transaction);
@@ -99,11 +104,11 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     recoveryCase = await db.insert("recovery_cases", recoveryCase);
   }
 
-  await audit(recoveryCase.case_id, "AI_AGENT", "ROOT_CAUSE_CLASSIFIED",
+  await auditWithRequest(recoveryCase.case_id, "AI_AGENT", "ROOT_CAUSE_CLASSIFIED",
     `Classified as ${diagnosis.cause}`, "OK", { evidence: diagnosis.evidence, confidence: diagnosis.confidence });
-  await audit(recoveryCase.case_id, "AI_AGENT", "RECOVERY_PROBABILITY_CALCULATED",
+  await auditWithRequest(recoveryCase.case_id, "AI_AGENT", "RECOVERY_PROBABILITY_CALCULATED",
     `recovery_probability=${recovery_probability}`, "OK", { risk_score });
-  await audit(recoveryCase.case_id, "AI_AGENT", "ACTION_RECOMMENDED",
+  await auditWithRequest(recoveryCase.case_id, "AI_AGENT", "ACTION_RECOMMENDED",
     `Recommended ${diagnosis.recommended_action}`, "OK", {});
 
   const allActions = await db.find("recovery_actions", () => true);
@@ -124,7 +129,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     lastOutcomeWasSuccess,
   });
 
-  await audit(recoveryCase.case_id, "POLICY_ENGINE",
+  await auditWithRequest(recoveryCase.case_id, "POLICY_ENGINE",
     decision.allowed ? "POLICY_GATE_PASSED" : (decision.requiresApproval ? "HUMAN_APPROVAL_REQUIRED" : "POLICY_BLOCKED"),
     decision.reason, decision.allowed ? "ALLOWED" : "BLOCKED", { policyTriggered: decision.policyTriggered });
 
@@ -136,9 +141,9 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     await transitionCaseStatus(db, recoveryCase.case_id, newStatus, {
       patch: { policy_status: decision.policyTriggered === "STOP_AFTER_SUCCESS" ? recoveryCase.policy_status : "BLOCKED" },
     });
-    await audit(recoveryCase.case_id, "SYSTEM", decision.escalate ? "CASE_ESCALATED" : "CASE_STOPPED",
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", decision.escalate ? "CASE_ESCALATED" : "CASE_STOPPED",
       decision.reason, "STOPPED", { policyTriggered: decision.policyTriggered });
-    return { case: await db.findOne("recovery_cases", (c) => c.case_id === recoveryCase.case_id), decision, executed: false };
+    return { case: await db.findOne("recovery_cases", (c) => c.case_id === recoveryCase.case_id), decision, executed: false, request_id: rid };
   }
 
   if (decision.requiresApproval && !humanApprovalGranted) {
@@ -151,14 +156,13 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
       status: "PENDING",
       created_at: new Date().toISOString(),
     });
-    await audit(recoveryCase.case_id, "SYSTEM", "AWAITING_HUMAN_APPROVAL", decision.reason, "PENDING", { policyTriggered: decision.policyTriggered });
-    return { case: await db.findOne("recovery_cases", (c) => c.case_id === recoveryCase.case_id), decision, executed: false };
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", "AWAITING_HUMAN_APPROVAL", decision.reason, "PENDING", { policyTriggered: decision.policyTriggered });
+    return { case: await db.findOne("recovery_cases", (c) => c.case_id === recoveryCase.case_id), decision, executed: false, request_id: rid };
   }
 
   if (humanApprovalGranted) {
-    await audit(recoveryCase.case_id, "HUMAN_REVIEWER", "APPROVAL_GRANTED",
+    await auditWithRequest(recoveryCase.case_id, "HUMAN_REVIEWER", "APPROVAL_GRANTED",
       "Human reviewer approved recovery action", "APPROVED", {});
-    decision.allowed = true;
     decision.requiresApproval = false;
     decision.reason = `${decision.reason} -> OVERRIDDEN by human approval.`;
   }
@@ -174,7 +178,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
   const idempotencyKey = `${recoveryCase.case_id}:${actionType}:${attemptNumber}`;
   const existingAction = await db.findOne("recovery_actions", (a) => a.idempotency_key === idempotencyKey);
   if (existingAction) {
-    await audit(recoveryCase.case_id, "SYSTEM", "DUPLICATE_ACTION_BLOCKED",
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", "DUPLICATE_ACTION_BLOCKED",
       `Idempotency key ${idempotencyKey} already executed - skipping duplicate financial action.`, "SKIPPED",
       { idempotency_key: idempotencyKey, original_action_id: existingAction.action_id });
     return {
@@ -217,7 +221,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
   }
 
   await db.insert("recovery_actions", { ...action, idempotency_key: idempotencyKey, result: JSON.stringify(executionResult) });
-  await audit(recoveryCase.case_id, "AI_AGENT", "RECOVERY_ACTION_EXECUTED",
+  await auditWithRequest(recoveryCase.case_id, "AI_AGENT", "RECOVERY_ACTION_EXECUTED",
     `Executed ${actionType} via Razorpay (${executionResult.mode})`, executionResult.success !== false ? "OK" : "FAILED",
     executionResult);
 
@@ -231,7 +235,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     recoveryProbability: recovery_probability,
   });
 
-  await audit(recoveryCase.case_id, "SYSTEM", "PAYMENT_VERIFICATION",
+  await auditWithRequest(recoveryCase.case_id, "SYSTEM", "PAYMENT_VERIFICATION",
     verification.paid ? "Payment confirmed successful" : "Payment not yet successful",
     verification.paid ? "SUCCESS" : "PENDING", verification);
 
@@ -240,6 +244,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     case_id: recoveryCase.case_id,
     transaction_id: transaction.transaction_id,
     amount: transaction.amount,
+    amount_paise: toPaise(transaction.amount),
     status: verification.paid ? "VERIFICATION_SUCCESS" : "VERIFICATION_FAILED",
     provider: verification.mode && verification.mode.includes("TEST_MODE") ? "razorpay" : "simulation",
     execution_mode: verification.mode && verification.mode.includes("TEST_MODE") && !verification.mode.includes("ERROR") ? "LIVE_TEST_MODE" : "SIMULATION",
@@ -251,20 +256,20 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
   let finalStatus;
   if (verification.paid) {
     finalStatus = "RECOVERED";
-    await audit(recoveryCase.case_id, "SYSTEM", "REVENUE_RECOVERED",
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", "REVENUE_RECOVERED",
       `₹${transaction.amount} recovered via ${actionType}`, "SUCCESS", { verification_id: verificationRecord.verification_id });
-    await audit(recoveryCase.case_id, "SYSTEM", "CASE_CLOSED", "Case closed - payment recovered", "CLOSED", {});
+    await auditWithRequest(recoveryCase.case_id, "SYSTEM", "CASE_CLOSED", "Case closed - payment recovered", "CLOSED", {});
   } else {
     const nextAttempt = recoveryCase.attempt_count + 1;
     const policyConfig = await policyEngine.getPolicyConfig();
     if (nextAttempt >= policyConfig.MAX_AUTOMATED_RETRIES) {
       finalStatus = "ESCALATED";
-      await audit(recoveryCase.case_id, "SYSTEM", "MAX_RETRIES_REACHED",
+      await auditWithRequest(recoveryCase.case_id, "SYSTEM", "MAX_RETRIES_REACHED",
         "Retry limit reached without successful recovery", "STOPPED", {});
-      await audit(recoveryCase.case_id, "SYSTEM", "CASE_ESCALATED", "Escalated to human review after retry exhaustion", "ESCALATED", {});
+      await auditWithRequest(recoveryCase.case_id, "SYSTEM", "CASE_ESCALATED", "Escalated to human review after retry exhaustion", "ESCALATED", {});
     } else {
       finalStatus = "OPEN";
-      await audit(recoveryCase.case_id, "SYSTEM", "RETRY_SCHEDULED",
+      await auditWithRequest(recoveryCase.case_id, "SYSTEM", "RETRY_SCHEDULED",
         "Payment not yet recovered; eligible for another attempt", "PENDING", {});
     }
   }
@@ -278,6 +283,7 @@ export async function runRecovery(transaction, { humanApprovalGranted = false, e
     executionResult,
     verification,
     finalStatus,
+    request_id: rid,
   };
 }
 
